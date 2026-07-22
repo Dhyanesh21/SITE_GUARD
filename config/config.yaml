@@ -1,0 +1,102 @@
+# =============================================================================
+# config/config.yaml — SINGLE SOURCE OF TRUTH for all non-secret, structural
+# configuration. Secrets (DB password, Slack URL) live in .env, NOT here.
+#
+# Non-negotiable this file enforces:
+#   * "config-driven confidence thresholds"  -> detection.conf_threshold
+#   * "zone-scoped, static config-defined zones" -> zones:
+# Nothing below is duplicated/hardcoded elsewhere in the codebase.
+# =============================================================================
+
+# --- Class map --------------------------------------------------------------
+# CONFIRM AGAINST YOUR DOWNLOAD'S data.yaml. This is the STANDARD ordering of
+# the Roboflow "Construction Site Safety" (css-data) dataset. If your data.yaml
+# lists names in a different order, every class_id below is wrong — we fix it
+# the moment you share the folder.
+classes:
+  names:                     # index == YOLO class_id
+    0: Hardhat
+    1: Mask
+    2: NO-Hardhat
+    3: NO-Mask
+    4: NO-Safety Vest
+    5: Person
+    6: Safety Cone
+    7: Safety Vest
+    8: machinery
+    9: vehicle
+
+  # Which class_ids are the "person" anchor and which are PPE-ABSENCE signals.
+  # The violation layer (Step 3) reads these — it never hardcodes indices.
+  person_class: 5
+  ppe_absence_classes:       # class_id -> human-readable violation type
+    2: NO-Hardhat
+    4: NO-Safety Vest
+  # (NO-Mask (3) exists in the data but is out of core scope per your brief.)
+
+# --- Detection (Step 1) -----------------------------------------------------
+detection:
+  # Bootstrap with public COCO yolov8n.pt so the pipeline runs BEFORE the
+  # PPE-trained weights from Step 8 exist. Swapped later. (Flagged in plan.)
+  model_path: weights/yolov8n.pt
+  conf_threshold: 0.35       # min confidence to KEEP a detection (the one knob)
+  iou_threshold: 0.50        # NMS IoU threshold (overlap merge)
+  device: cpu                # you are CPU-only; explicit so nothing guesses
+  imgsz: 640                 # inference input size
+
+# --- Tracking (Step 2) ------------------------------------------------------
+tracking:
+  tracker: bytetrack.yaml    # Ultralytics ships this; ByteTrack config
+  persist: true              # keep track state across successive frames
+
+# --- Frame sampling (Step 5; matters a lot on CPU) --------------------------
+sampling:
+  video_every_n_frames: 5    # process 1 of every N frames for video files
+  stream_every_n_frames: 3   # and for live streams
+
+# --- Zones (Step 3): STATIC, config-defined, per camera ---------------------
+# Each zone is a polygon in ABSOLUTE PIXEL coords of that camera's frame.
+# Coords are placeholders until we know your real frame size / demo footage.
+zones:
+  - id: zone_a
+    name: "Main gate approach"
+    camera_id: cam_01
+    polygon: [[0, 0], [640, 0], [640, 480], [0, 480]]   # full-frame for now
+  - id: zone_b
+    name: "Scaffold area"
+    camera_id: cam_02
+    polygon: [[100, 100], [500, 100], [500, 400], [100, 400]]
+
+# --- Cameras / stream sources (Step 5) --------------------------------------
+cameras:
+  - id: cam_01
+    name: "Front entrance"
+    source: 0                # 0 = default webcam; or an RTSP/file URL string
+  - id: cam_02
+    name: "Scaffold cam"
+    source: "sample_videos/scaffold.mp4"
+
+# --- Violation incident logic (Step 3) --------------------------------------
+violation:
+  # If a violating track is unseen for this long, the incident is CLOSED and
+  # its final duration frozen. Prevents one worker leaving+returning from being
+  # counted as the same never-ending violation.
+  incident_timeout_seconds: 10
+  min_incident_seconds: 1.0  # ignore sub-second blips (noise)
+  # A PPE-absence box (e.g. NO-Hardhat) is attributed to a person only if at
+  # least this fraction of the PPE box's AREA lies inside that person's box.
+  # Below this, we can't confidently say WHICH person it belongs to, so the
+  # detection is dropped rather than guessed at.
+  ppe_person_min_overlap: 0.5
+
+# --- Alerting (Step 6): threshold rule (values defended when we build it) ----
+alert:
+  enabled: true
+  violations_threshold: 5    # N violations...
+  window_seconds: 60         # ...within T seconds from ONE zone...
+  cooldown_seconds: 300      # ...then stay quiet for this long (anti-spam)
+
+# --- Evidence snapshots (Steps 3-4) -----------------------------------------
+snapshots:
+  dir: snapshots             # where flagged-frame images are written
+  save: true

@@ -1,0 +1,50 @@
+# =============================================================================
+# requirements.txt  (venv + pip)
+#
+# Pins are chosen for reproducibility (interview-defensible), but exact patch
+# versions may be nudged the first time we `pip install` if the resolver
+# complains — we verify, then re-pin. Grouped by the build step that first
+# needs each dependency, so you can install incrementally.
+# =============================================================================
+
+# --- Step 0: config + schema foundation (installed & verified now) ----------
+pydantic==2.9.2
+pydantic-settings==2.5.2
+PyYAML==6.0.2
+
+# --- Step 1+: detection / CV (heavy; install before Step 1) -----------------
+# ultralytics pulls in a CPU build of torch/torchvision automatically on
+# Windows from PyPI (no CUDA index needed) — this is why CPU-only is fine.
+ultralytics==8.3.40
+opencv-python==4.10.0.84
+numpy==1.26.4
+pillow==10.4.0
+
+# --- Step 2: ByteTrack's linear-assignment solver ---------------------------
+# ultralytics.track() imports this at call time and, if missing, tries to
+# `pip install` it itself into whatever Python is on PATH (NOT necessarily
+# this venv) — a silent, environment-polluting side effect we don't want.
+# Pinning it here means it's always present before track() is ever called,
+# so that auto-install path never triggers. Pair with YOLO_AUTOINSTALL=False
+# (see app/tracking/tracker.py) to make any future missing dep fail loudly
+# instead of silently installing somewhere unexpected.
+lapx==0.5.11
+
+# --- Step 4+: API + persistence ---------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12          # file uploads for /detect, /detect/video
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.10           # Postgres driver
+
+# --- Step 6: Slack alerting --------------------------------------------------
+requests==2.32.3
+
+# --- Step 7: explainability (Eigen-CAM / Grad-CAM) --------------------------
+grad-cam==1.5.4
+
+# --- Step 9: thin UI ---------------------------------------------------------
+streamlit==1.40.2
+
+# --- Dev / tests -------------------------------------------------------------
+pytest==8.3.4
