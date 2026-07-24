@@ -1,4 +1,3 @@
-
 """
 scripts/live_fire_alert.py — ONE-OFF, MANUAL proof that a real message lands
 in your Slack channel. Not part of the automated pytest suite (see

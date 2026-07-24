@@ -29,17 +29,19 @@ import os
 import tempfile
 import threading
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 
 from app.config import settings
 from app.db import crud
 from app.db.session import get_session
 from app.detection.frame_source import Frame, SourceType, iter_frames
+from app.explain.cam import CamExplainer
 from app.pipeline import Pipeline
 from app.schemas import (
     AnalyticsResponse,
@@ -64,6 +66,15 @@ app = FastAPI(title="PPE Compliance Monitoring")
 # one background thread touching its own state.
 _stream_workers: dict[str, StreamWorker] = {}
 _stream_lock = threading.Lock()
+
+
+@lru_cache(maxsize=1)
+def _get_cam_explainer() -> CamExplainer:
+    # Lazy + cached: constructing CamExplainer loads its OWN YOLO weights
+    # and registers EigenCAM's forward hooks — real startup cost we don't
+    # want paid by every process (e.g. test collection) that imports this
+    # module but never calls /explain. First request pays it once.
+    return CamExplainer()
 
 
 @app.post("/detect", response_model=DetectResponse)
@@ -297,3 +308,24 @@ async def get_analytics(
         compliance_rate=compliance_rate,
         most_common=counts,
     )
+
+
+@app.post("/explain")
+async def explain_image(file: UploadFile = File(...)) -> Response:
+    """Eigen-CAM heatmap for one uploaded image — returns a JPEG (not JSON)
+    since the whole point is a human looking at where the model's attention
+    was concentrated. See app/explain/cam.py for why Eigen-CAM (not
+    Grad-CAM) and its class-agnostic limitation.
+    """
+    raw = await file.read()
+    buffer = np.frombuffer(raw, dtype=np.uint8)
+    image = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(status_code=400, detail="could not decode uploaded file as an image")
+
+    overlay = _get_cam_explainer().heatmap(image)
+    ok, encoded = cv2.imencode(".jpg", overlay)
+    if not ok:
+        raise HTTPException(status_code=500, detail="failed to encode heatmap image")
+
+    return Response(content=encoded.tobytes(), media_type="image/jpeg")

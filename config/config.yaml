@@ -9,10 +9,16 @@
 # =============================================================================
 
 # --- Class map --------------------------------------------------------------
-# CONFIRM AGAINST YOUR DOWNLOAD'S data.yaml. This is the STANDARD ordering of
-# the Roboflow "Construction Site Safety" (css-data) dataset. If your data.yaml
-# lists names in a different order, every class_id below is wrong — we fix it
-# the moment you share the folder.
+# SWITCHED (again) to the 10-class Kaggle mirror of this same Roboflow
+# project (an earlier snapshot, "v28 YOLOv5s" per its bundled README, before
+# the project grew to the 25-class version we tried first). This mirror
+# ships NO data.yaml of its own, so the order below was NOT guessed — it was
+# read directly from data/results_yolov8n_100e/kaggle/working/ppe_data.yaml,
+# a bundled prior training run's config that lists the exact names/order
+# used for these same label files. Cross-checked against label-file class-id
+# frequency counts (class 5 = 9872 occurrences, by far the most common —
+# consistent with it being "Person," present in nearly every image) before
+# trusting it. This happens to match the ORIGINAL plan placeholder exactly.
 classes:
   names:                     # index == YOLO class_id
     0: Hardhat
@@ -36,9 +42,15 @@ classes:
 
 # --- Detection (Step 1) -----------------------------------------------------
 detection:
-  # Bootstrap with public COCO yolov8n.pt so the pipeline runs BEFORE the
-  # PPE-trained weights from Step 8 exist. Swapped later. (Flagged in plan.)
-  model_path: weights/yolov8n.pt
+  # Step 8's PPE-trained YOLOv8n, not YOLOv8s — see training/benchmark.md for
+  # the real numbers: nano is 3.08x faster on CPU (131.2ms vs 403.9ms/image)
+  # for a real but proportionally smaller accuracy cost (+19.5% relative
+  # mAP50-95 for small). Chosen because this system's primary use case
+  # (/stream/start) is near-real-time CPU inference, where throughput headroom
+  # matters more than squeezing out extra accuracy that arrives 3x slower.
+  # (weights/yolov8n.pt — the original bootstrap COCO weights — is kept for
+  # reference/rollback, not deleted.)
+  model_path: weights/yolov8n_best.pt
   conf_threshold: 0.35       # min confidence to KEEP a detection (the one knob)
   iou_threshold: 0.50        # NMS IoU threshold (overlap merge)
   device: cpu                # you are CPU-only; explicit so nothing guesses

@@ -1,8 +1,19 @@
 """
-Step 1 verification: the Detector loads the (bootstrap COCO) model, runs
-inference on a real image, and returns validated Detection objects with the
-model's OWN class names — not the PPE config names (see detector.py docstring
-for why that's the correct behavior right now).
+Step 1 verification: the Detector loads a model, runs inference on a real
+image, and returns validated Detection objects with the model's OWN class
+names — not the PPE config names (see detector.py docstring for why that's
+the correct behavior).
+
+WHY THIS TEST EXPLICITLY PASSES model_path="weights/yolov8n.pt" (the
+bootstrap COCO weights), rather than relying on config.yaml's default:
+since Step 8, config.yaml's detection.model_path points at the PPE-trained
+weights/yolov8n_best.pt instead. This test's job is proving the DETECTOR
+WRAPPER works — decoding raw model output into structured Detection objects
+correctly — a concern that's independent of which weights happen to be
+configured as the app's current default. Pinning to the well-known,
+general-purpose COCO weights keeps this test stable regardless of future
+retraining (Step 8 could be re-run with different data/hyperparameters
+without this test's expected class names changing underneath it).
 
 Uses an Ultralytics-bundled sample asset (bus.jpg — contains people) so this
 test needs no dataset download, just the auto-downloaded yolov8n.pt weights.
@@ -17,7 +28,7 @@ from app.schemas import Detection
 
 
 def test_detector_infers_people_on_bundled_sample_image():
-    detector = Detector()
+    detector = Detector(model_path="weights/yolov8n.pt")
     image_path = ASSETS / "bus.jpg"
 
     frames = list(iter_frames(SourceType.IMAGE, image_path))

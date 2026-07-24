@@ -13,7 +13,9 @@ would be hard to reproduce reliably from a real model).
 Uses the REAL config/config.yaml (via app.config.settings) rather than a
 mock config, so these tests double as an integration check of the actual
 zone/class wiring: cam_01/zone_a is a full-frame zone (0,0)-(640,480);
-cam_02/zone_b is (100,100)-(500,400); person_class=5; NO-Hardhat=2.
+cam_02/zone_b is (100,100)-(500,400); person_class=5; NO-Hardhat=2 — matching
+the 10-class Kaggle mirror dataset (data/css-data), confirmed via its
+bundled data/results_yolov8n_100e/kaggle/working/ppe_data.yaml.
 """
 
 from datetime import datetime, timedelta, timezone

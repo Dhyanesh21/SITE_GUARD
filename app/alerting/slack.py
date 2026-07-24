@@ -43,6 +43,7 @@ WHY IT NO-OPS SAFELY WHEN webhook_url IS EMPTY OR alert.enabled IS FALSE
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Optional
@@ -52,6 +53,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import crud
+
+logger = logging.getLogger(__name__)
 
 
 class AlertManager:
@@ -89,18 +92,36 @@ class AlertManager:
         if count < self.threshold:
             return False
 
-        self._send(zone_id=zone_id, camera_id=camera_id, count=count)
+        if not self._send(zone_id=zone_id, camera_id=camera_id, count=count):
+            # Delivery failed (Slack down, network error, bad webhook) — do
+            # NOT start the cooldown or report a sent alert. A false "sent"
+            # here would mean a real safety threshold got crossed and BOTH
+            # the notification and the retry window were silently lost.
+            # Leaving cooldown untouched means the next new violation in
+            # this zone (if the threshold is still met) tries again.
+            return False
+
         self._last_alert_at[zone_id] = now
         return True
 
-    def _send(self, *, zone_id: str, camera_id: str, count: int) -> None:
+    def _send(self, *, zone_id: str, camera_id: str, count: int) -> bool:
+        """POST to Slack. Never raises — a Slack outage/network blip must
+        not crash the request or stream-worker thread that's actually doing
+        the safety-critical work (detection/tracking/persistence). Returns
+        whether delivery succeeded, so the caller can decide whether to
+        treat this as "alert sent" (and start the cooldown)."""
         text = (
             f":rotating_light: *{count} PPE violations* in zone `{zone_id}` "
             f"(camera `{camera_id}`) within the last {int(self.window_seconds)}s. "
             f"Cooling down for {int(self.cooldown_seconds)}s before the next alert."
         )
-        response = requests.post(self.webhook_url, json={"text": text}, timeout=5)
-        response.raise_for_status()
+        try:
+            response = requests.post(self.webhook_url, json={"text": text}, timeout=5)
+            response.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as exc:
+            logger.error("failed to send Slack alert for zone %s: %s", zone_id, exc)
+            return False
 
 
 @lru_cache(maxsize=1)

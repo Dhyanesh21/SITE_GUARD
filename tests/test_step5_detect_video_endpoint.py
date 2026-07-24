@@ -4,12 +4,17 @@ real Pipeline, real Postgres, real (synthetic) video file. Reuses the
 walking-person clip generated for Step 2's tracking demo
 (scripts/_demo_output/synthetic_walk.avi) so we don't need real footage.
 
-Same reasoning as the /detect test applies to why we don't assert any
-ViolationEvent: bootstrap COCO weights label people as class_id 0, but
-config.classes.person_class is 5 (the PPE dataset's ordering) — so
-ViolationEngine correctly recognizes zero persons on this model's output.
-This test proves multi-frame sampling + one Pipeline session spanning the
-whole file + finalize() all work together over real HTTP.
+WHY THIS TEST DOESN'T ASSERT ANY ViolationEvent WAS CREATED
+  As of Step 8, config.yaml points at REAL PPE-trained weights, not the
+  earlier bootstrap COCO ones — but this video's frames are a SYNTHETIC
+  composite (a real person crop pasted onto a plain background, built for
+  Step 2's tracking demo), a scene very unlike the real construction-site
+  photos this model was trained on. Whether it fires any PPE-absence
+  detections on such an out-of-domain composite isn't something to assert
+  either way. This test proves multi-frame sampling + one Pipeline session
+  spanning the whole file + finalize() all work together over real HTTP;
+  Step 3's own tests already prove the violation LOGIC works, using
+  synthetic Detections placed at precise, deliberate zone coordinates.
 """
 
 from pathlib import Path

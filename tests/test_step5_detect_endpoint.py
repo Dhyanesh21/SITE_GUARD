@@ -4,14 +4,19 @@ Step 5 (pass 1) verification: POST /detect end-to-end over real HTTP
 container — not mocked at any layer.
 
 WHY THIS TEST DOESN'T ASSERT ANY ViolationEvent WAS CREATED
-  We're still running the bootstrap COCO weights (yolov8n.pt), not
-  PPE-trained ones (Step 8's output). COCO's class_id 0 is "person"; our
-  config's person_class is 5 (the PPE dataset's ordering). ViolationEngine
-  only recognizes a detection as a "person" when class_id == person_class,
-  so on COCO output it never does — zero violations is the CORRECT result
-  here, not a test gap. This test proves the HTTP -> Pipeline -> DB wiring
-  works; Step 3's own tests already prove the violation LOGIC works, using
-  synthetic Detections that stand in for PPE-trained output.
+  As of Step 8, config.yaml points at REAL PPE-trained weights
+  (weights/yolov8n_best.pt) — this image genuinely produces NO-Hardhat/
+  NO-Safety Vest detections now (unlike the earlier bootstrap-COCO era,
+  where the class-id mismatch made zero violations unconditionally
+  correct). Whether a ViolationEvent actually gets CREATED still depends on
+  cam_01/zone_a's polygon — a placeholder per config.yaml's own comment
+  ("full-frame for now," sized for an assumed 640x480 frame, not bus.jpg's
+  real 810x1080) — so asserting a specific violation count here would be
+  coupling this test to zone geometry that hasn't been calibrated to real
+  camera footage yet, not to anything this test is actually meant to prove.
+  This test's job is proving the HTTP -> Pipeline -> DB wiring works end to
+  end; Step 3's own tests already prove the violation LOGIC works, using
+  synthetic Detections placed at precise, deliberate zone coordinates.
 """
 
 from fastapi.testclient import TestClient

@@ -10,6 +10,7 @@ that a real message lands in Slack is a manual script
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import requests
 
 from app.alerting.slack import AlertManager
 from app.db import crud
@@ -128,6 +129,29 @@ def test_alert_noops_when_disabled(monkeypatch):
     with SessionLocal() as session:
         _seed_closed_violations(session, zone_id="zone_d", camera_id="cam_01", count=5, first_seen=BASE_TIME)
         assert manager.notify_new_violation(session, zone_id="zone_d", camera_id="cam_01", now=BASE_TIME) is False
+
+
+def test_alert_delivery_failure_does_not_raise_and_does_not_start_cooldown(monkeypatch):
+    def failing_post(url, json, timeout):
+        raise requests.exceptions.ConnectionError("simulated Slack outage")
+
+    monkeypatch.setattr("app.alerting.slack.requests.post", failing_post)
+
+    manager = AlertManager(
+        webhook_url="https://example.invalid/webhook",
+        enabled=True, threshold=1, window_seconds=60, cooldown_seconds=300,
+    )
+
+    with SessionLocal() as session:
+        _seed_closed_violations(session, zone_id="zone_e", camera_id="cam_01", count=1, first_seen=BASE_TIME)
+        # Must not raise, even though the underlying POST does.
+        fired = manager.notify_new_violation(session, zone_id="zone_e", camera_id="cam_01", now=BASE_TIME)
+        assert fired is False  # delivery failed -> not reported as sent
+
+        # Cooldown was NOT started by the failed attempt, so a later retry
+        # (still within what would have been the cooldown window) is free
+        # to try again rather than being silently suppressed.
+        assert "zone_e" not in manager._last_alert_at
 
 
 # ---------------------------------------------------------------------------
