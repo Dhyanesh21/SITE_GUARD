@@ -166,6 +166,24 @@ class DetectResponse(BaseModel):
     frame: FrameDetections
 
 
+class VideoDetectResponse(BaseModel):
+    """Response for /detect/video. Deliberately does NOT include per-frame
+    detections (unlike DetectResponse) — a sampled video can be hundreds of
+    frames, and the raw per-frame detections aren't persisted anywhere
+    downstream anyway (only ViolationEvents are). Returning every frame's
+    detections would bloat the response with data nothing consumes; the
+    violations list is the actually-actionable output of processing a video.
+    """
+
+    frames_processed: int
+    violations: list[ViolationEvent] = Field(default_factory=list)
+
+
+class StreamActionResponse(BaseModel):
+    camera_id: str
+    status: str            # "started" | "stopped"
+
+
 class AnalyticsResponse(BaseModel):
     total_violations: int
     compliance_rate: float                        # 0..1

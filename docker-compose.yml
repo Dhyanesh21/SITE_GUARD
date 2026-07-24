@@ -1,0 +1,46 @@
+# =============================================================================
+# docker-compose.yml — Step 4: real Postgres, running in a container.
+#
+# Only the DB service is defined here for now. The API service (Dockerfile)
+# is added later at packaging time — Step 4 needs Postgres reachable from
+# the HOST (your local venv), not from inside another container yet.
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    # Pinned explicitly: Docker Desktop on this host picked the ARM64 image
+    # variant by default (observed running under QEMU emulation as
+    # "aarch64-unknown-linux-musl" instead of native amd64) — slower than
+    # necessary for no benefit. Forcing linux/amd64 matches this machine.
+    platform: linux/amd64
+    container_name: ppe_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ppe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_locally}
+      POSTGRES_DB: ${POSTGRES_DB:-ppe_compliance}
+    ports:
+      # host:container — lets your venv's app (running on the host, not in
+      # Docker) reach Postgres at localhost:5432, matching .env's
+      # POSTGRES_HOST=localhost.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # NAMED volume, not a bind mount: Postgres owns this data directory.
+      # Surviving `docker compose down` (but NOT `down -v`) is the whole
+      # point — container removal must not silently delete violation
+      # evidence.
+      - ppe_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready checks the DB is actually ready to accept queries, not
+      # just that the container process has started — Postgres has a real
+      # startup sequence (init scripts, WAL recovery) that can take a moment.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ppe} -d ${POSTGRES_DB:-ppe_compliance}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ppe_postgres_data:
+
+
